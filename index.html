@@ -1,0 +1,33 @@
+<!doctype html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <title>Map sample</title>
+        <style type="text/css">
+            .controller {
+                position: absolute;
+                left: 0; top: 0;
+                z-index: 999;
+            }
+            .controller--zoom-out {
+                top: 20px;
+            }
+            #map-element{
+                position: relative;
+                float: left;    
+                width: 500px;
+                border: 1px solid black;
+                overflow: hidden;
+
+                width: 100%;
+                height: 680px;
+            }
+        </style>
+    </head>
+    <body style="height: 2500px;">
+        <div id="map-element"></div>
+        <input type="button" value="Zoom in" id="zoomin" />
+        <input type="button" value="Zoom out" id="zoomout" />
+        <script src="dest/module.js"></script>
+    </body>
+</html>
