@@ -6,9 +6,14 @@
     "gulp": "",
     "gulp-babel": "^7.0.0",
     "babel-core": "",
-    "babel-preset-env": ""
+    "babel-preset-env": "",
+    "gulp-util": "",
+    "gulp-uglify": ""
   },
-  "devDependencies": {},
+  "devDependencies": {
+    "gulp-uglify": "^3.0.1",
+    "gulp-util": "^3.0.8"
+  },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },

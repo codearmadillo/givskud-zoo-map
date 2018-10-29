@@ -20,27 +20,16 @@ class InteractiveMap {
             y: config && config.Position ? config.Position.y : 0
         };
         this.Map = {
-            Source: map.Source,
+            Source: map,
             AspectRatio: null,
             Horizontal: null
         }
         this.Elements = {};
         this.Elements.Parent = parent;
-        /*
-        this.DragForce = 0.09;
+        this.SynchQueue = Array();
+        this.InitiatedCall = false;
 
-        this.ZoomIncrease = 0.5;
-        this.ZoomMinimum = 0.5;
-        this.ZoomMaximum = 4;
-        this.Zoom = config && config.Zoom && config.Zoom >= this.ZoomMinimum && config.Zoom <= this.ZoomMaximum ? config.Zoom : 1;
-
-        this.Map = map;
-        this.Map.AspectRatio = (this.Map.Height / this.Map.Width).toFixed(3);
-
-        this.Elements = {};
-        this.Elements.Parent = parent;
-        this.Elements.Loader = this.Loader();
-        */
+        this.Markers = {};
 
         this.Load();
     }
@@ -58,7 +47,7 @@ class InteractiveMap {
 
         var MapImageElement = new Image();
             MapImageElement.addEventListener('load', function(e){
-                if(MapImageElement.width / MapImageElement.height > 1){
+                if(MapImageElement.width / MapImageElement.height > 1){ 
                     self.Map.Horizontal = true;
                     self.Map.AspectRatio = MapImageElement.height / MapImageElement.width;
                 } else {
@@ -92,8 +81,12 @@ class InteractiveMap {
                 MElement.style.backgroundRepeat = 'no-repeat';
                 MElement.style.backgroundPosition = 'center center';
 
+                MElement.style.zIndex = 50;
+
             this.Elements.Map = MElement;
             this.Elements.Parent.appendChild(this.Elements.Map);
+
+            this.RunSynchQueue();
 
             this.CreateControllers();
         }
@@ -117,6 +110,12 @@ class InteractiveMap {
                 this.Elements.Map.style.top = offsetY + "px";
             } else {
                 this.Pan.IsEnabled = true;
+
+                // Needs to be rewritten
+                if(!this.Pan.mouseDrag && !this.Pan.touchDrag){
+                    this.Elements.Map.style.top = "0px";
+                    this.Elements.Map.style.left = "0px";
+                }
             }
         } else {
             this.Elements.Map.style.height = (this.Viewport.Height * this.Zoom.Zoom) + "px";
@@ -129,110 +128,50 @@ class InteractiveMap {
                 this.Elements.Map.style.left = offsetX + "px";
             } else {
                 this.Pan.IsEnabled = true;
+
+                // Needs to be rewritten
+                if(!this.Pan.mouseDrag && !this.Pan.touchDrag){
+                    this.Elements.Map.style.top = "0px";
+                    this.Elements.Map.style.left = "0px";
+                }
+            }
+        }
+
+        // Render markers
+        if(this.Markers){
+            for(let g in this.Markers){
+                let MarkerGroup = this.Markers[g].items;
+                for(let m in MarkerGroup){
+                    let Marker = MarkerGroup[m];
+                    
+                    // Create marker element if not available
+                    if(!Marker.Element){
+                        let MarkerElement = document.createElement('span');
+                            MarkerElement.style.position = 'absolute';
+                            MarkerElement.className = 'iamap-marker';
+
+                            /*
+                            Temporary
+                            */
+                            MarkerElement.style.width = "30px";
+                            MarkerElement.style.height = MarkerElement.style.width;
+                            MarkerElement.style.borderRadius = "calc(" + MarkerElement.style.width + " / 2)";
+                            MarkerElement.style.backgroundColor = "red";
+
+                        this.Markers[g].items[m].Element = MarkerElement;
+                        this.Elements.Markers.appendChild(this.Markers[g].items[m].Element);
+                    }
+
+                    this.Markers[g].items[m].Element.style.visibility = Marker.render ? "unset" : "hidden";
+
+                    this.Markers[g].items[m].Element.style.left = (Marker.position.x * this.Zoom.Zoom) + "px";
+                    this.Markers[g].items[m].Element.style.top = (Marker.position.y * this.Zoom.Zoom) + "px";
+                }
+
             }
         }
 
         return true;
-
-        // DEPRECATED
-
-        if(!this.Elements.Map) {
-            this.Elements.Parent.removeChild(this.Elements.Loader);
-
-            var M = document.createElement('div');
-                M.className = 'iamap-maplayer';
-                M.style.position = 'relative';
-
-                /*
-                if(this.Viewport.Width >= this.Viewport.Height) {
-                    M.style.width = (this.Viewport.Width * this.Zoom) + "px";
-                    M.style.height = (this.Viewport.Width * this.Map.AspectRatio * this.Zoom).toFixed(2) + "px";
-                } else {
-                    M.style.height = (this.Viewport.Height * this.Zoom) + "px";
-                    M.style.width = (this.Viewport.Height / this.Map.AspectRatio  * this.Zoom).toFixed(2) + "px";
-                }
-
-                if(parseFloat(M.style.height) < this.Viewport.Height) {
-                    M.style.top = ((this.Viewport.Height - parseFloat(M.style.height)) / 2) + "px";
-                }
-                if(parseFloat(M.style.width) < this.Viewport.Width) {
-                    M.style.left = ((this.Viewport.Width - parseFloat(M.style.width)) / 2) + "px";
-                }
-                */
-
-                M.style.backgroundImage = "url('"+this.Map.Source+"')";
-                M.style.backgroundRepeat = 'no-repeat';
-                M.style.backgroundPosition = 'center center';
-
-                if(this.Viewport.Width >= this.Viewport.Height) {
-                    M.style.backgroundSize = '100% auto';
-                } else {
-                    M.style.backgroundSize = 'auto 100%';
-                }
-
-            this.Elements.Map = M;
-            this.Elements.Parent.appendChild(this.Elements.Map);
-
-            if(parseFloat(this.Elements.Map.style.width).toFixed(2) > this.Viewport.Width) {
-                let offX = (parseFloat(this.Elements.Map.style.width).toFixed(2) - this.Viewport.Width) / 2;
-                this.Position.x = offX;
-                this.Elements.Parent.scrollLeft = offX;
-            }
-            if(parseFloat(this.Elements.Map.style.height).toFixed(2) > this.Viewport.Height) {
-                let offY = (parseFloat(this.Elements.Map.style.height).toFixed(2) - this.Viewport.Height) / 2;
-                this.Position.y = offY;
-                this.Elements.Parent.scrollTop = offY;
-            }
-
-            this.CreateControllers();   
-        } else {
-            // Rescale map element
-            if(this.Viewport.Width >= this.Viewport.Height) {
-                this.Elements.Map.style.width = (this.Viewport.Width * this.Zoom) + "px";
-                this.Elements.Map.style.height = (this.Viewport.Width * this.Map.AspectRatio * this.Zoom).toFixed(2) + "px";
-
-                /*
-                if(parseFloat(this.Elements.Map.style.height) < this.Viewport.Height) {
-                    this.Elements.Map.style.top = ((this.Viewport.Height - parseFloat(this.Elements.Map.style.height)) / 2) + "px";
-                } else {
-                    this.Elements.Map.style.top = "0px";
-                }
-                */
-            } else {
-                this.Elements.Map.style.height = (this.Viewport.Height * this.Zoom) + "px";
-                this.Elements.Map.style.width = (this.Viewport.Height / this.Map.AspectRatio  * this.Zoom).toFixed(2) + "px";
-            }
-
-            if(this.Markers){
-                for(let Key in this.Markers) {
-                    let Group = this.Markers[Key];
-                    let Pins = Group.items;
-
-                    Pins.forEach(function(v){
-                        console.log(v);
-                    });
-
-                    /*
-                    Group['items'].forEach(function(Marker){
-                        console.log(Marker);
-                    });
-                    */
-
-                    /*
-                    let Marker = this.Markers[Key];
-                    
-                    
-                    let MarkerElement = document.createElement('span');
-                        MarkerElement.style.position = 'absolute';
-                        MarkerElement.className = 'iamap-marker';
-
-                        MarkerElement.style.left = Marker.
-
-                    Marker.element = MarkerElement;
-                    */
-                }
-            }
-        }
     }
     CreateControllers() {
         var self = this;
@@ -242,14 +181,15 @@ class InteractiveMap {
         var ControllersElement = document.createElement('div');
             ControllersElement.className = 'iamap-controllerslayer';
             ControllersElement.style.position = 'absolute';
-            ControllersElement.style.zIndex = '100';
-            ControllersElement.style.top = 0; ControllersElement.style.right = 0; ControllersElement.style.bottom = 0; ControllersElement.style.left = 0;
+            ControllersElement.style.top = 0; ControllersElement.style.left = 0;
+            ControllersElement.style.zIndex = 100;
         this.Elements.Controllers.Parent = ControllersElement;
         this.Elements.Parent.appendChild(this.Elements.Controllers.Parent);
 
         var ZoomInController = document.createElement('input');
             ZoomInController.type = "button";
             ZoomInController.value = "Zoom in";
+            ZoomInController.style.position = "relative";
             ZoomInController.addEventListener('click', function(e){
                 e.preventDefault();
                 self.MapControlZoom(true);
@@ -260,6 +200,7 @@ class InteractiveMap {
         var ZoomOutController = document.createElement('input');
             ZoomOutController.type = 'button';
             ZoomOutController.value = 'Zoom out';
+            ZoomOutController.style.position = "relative";
             ZoomOutController.addEventListener('click', function(e){
                 e.preventDefault();
                 self.MapControlZoom(false);
@@ -267,74 +208,103 @@ class InteractiveMap {
         this.Elements.Controllers.ZoomOut = ZoomOutController;
         this.Elements.Controllers.Parent.appendChild(this.Elements.Controllers.ZoomOut);
 
-        return true;
+        this.Pan.XStart = null;
+        this.Pan.YStart = null;
 
-        this.Elements.Controls = {};
-        var self = this;
-
-        window.addEventListener('resize', function(e){
-            self.render();
-        });
-
-        var ZoomInController = document.getElementById('zoomin');
-        var ZoomOutController = document.getElementById('zoomout');
-            ZoomInController.addEventListener('click', function(e){
-                self.MapControlZoom(self.ZoomIncrease);
-            });
-            ZoomOutController.addEventListener('click', function(e){
-                self.MapControlZoom(self.ZoomIncrease * -1);
-            });
-
-
-        this.DragStartX = null;
-        this.DragStartY = null;
-
-        this.mouseDrag = false;
-        this.touchDrag = false;
+        this.Pan.mouseDrag = false;
+        this.Pan.touchDrag = false;
 
         this.Elements.Map.addEventListener('touchstart', function(e){
-            self.touchDrag = true;
-
-            self.DragStartX = parseFloat((e.changedTouches[0].clientX - self.Elements.Parent.offsetLeft).toFixed(2));
-            self.DragStartY = parseFloat((e.changedTouches[0].clientY - self.Elements.Parent.offsetTop).toFixed(2));
-        });
-        this.Elements.Map.addEventListener('touchend', function(e){
-            self.touchDrag = false;
-
-            self.DragStartX = null;
-            self.DragStartY = null;
-        });
-        this.Elements.Map.addEventListener('touchmove', function(e){
             e.preventDefault();
 
-            if(self.touchDrag) {
-                let cursorX = parseFloat((window.event.changedTouches[0].clientX).toFixed(2));
-                let cursorY = parseFloat((window.event.changedTouches[0].clientY).toFixed(2));
-
-                self.MapControlPan(cursorX, cursorY);
-            }   
+            self.Pan.touchDrag = true;
+            self.Pan.XStart = parseFloat((e.changedTouches[0].clientX - self.Elements.Parent.offsetLeft).toFixed(2));
+            self.Pan.YStart = parseFloat((e.changedTouches[0].clientY - self.Elements.Parent.offsetTop).toFixed(2));
         });
-
         this.Elements.Map.addEventListener('mousedown', function(e){
-            self.mouseDrag = true;
-            
-            self.DragStartX = e.clientX - self.Elements.Parent.offsetLeft;
-            self.DragStartY = e.clientY - self.Elements.Parent.offsetTop;
+            e.preventDefault();
+
+            self.Pan.mouseDrag = true;
+            self.Pan.XStart = e.clientX - self.Elements.Parent.offsetLeft;
+            self.Pan.YStart = e.clientY - self.Elements.Parent.offsetTop;
+        });
+        this.Elements.Map.addEventListener('touchend', function(e){
+            e.preventDefault();
+
+            self.Pan.touchDrag = false;
+            self.Pan.XStart = null;
+            self.Pan.YStart = null;
         });
         this.Elements.Map.addEventListener('mouseup', function(e){
-            self.mouseDrag = false;
+            e.preventDefault();
 
-            self.DragStartX = null;
-            self.DragStartY = null;
+            self.Pan.mouseDrag = false;
+            self.Pan.XStart = null;
+            self.Pan.YStart = null;
+        });
+        this.Elements.Map.addEventListener('mouseleave', function(e){
+            if(self.Pan.mouseDrag){
+                self.Pan.mouseDrag = false;
+                self.Pan.XStart = null;
+                self.Pan.YStart = null;
+            }
         });
         this.Elements.Map.addEventListener('mousemove', function(e){
-            if(self.mouseDrag) {
+            e.preventDefault();
+
+            if(self.Pan.mouseDrag && self.Pan.IsEnabled){
                 let cursorX = window.event.clientX;
                 let cursorY = window.event.clientY;
 
                 self.MapControlPan(cursorX, cursorY);
             }
         });
+        this.Elements.Map.addEventListener('touchmove', function(e){
+            e.preventDefault;
+
+            if(self.Pan.touchDrag && self.Pan.IsEnabled){
+                let cursorX = parseFloat((window.event.changedTouches[0].clientX).toFixed(2));
+                let cursorY = parseFloat((window.event.changedTouches[0].clientY).toFixed(2));
+
+                self.MapControlPan(cursorX, cursorY);
+            }
+        });
+
+        // Marker controls
+        for(let key in self.Markers){
+            let Marker = self.Markers[key];
+            var MControllerShow = document.createElement('input');
+                MControllerShow.type = "button";
+                MControllerShow.value = "Show group " + Marker.label;
+                MControllerShow.style.positino = "relative";
+                MControllerShow.addEventListener('click', function(e){
+                    e.preventDefault();
+                    self.ShowMarkers({
+                        type: 'group',
+                        group: Marker.id.toString()
+                    });
+                }); 
+            var MControllerHide = document.createElement('input');
+                MControllerHide.type = "button";
+                MControllerHide.value = "Hide group " + Marker.label;
+                MControllerHide.style.positino = "relative";
+                MControllerHide.addEventListener('click', function(e){
+                    e.preventDefault();
+                    self.HideMarkers({
+                        type: 'group',
+                        group: Marker.id.toString()
+                    });
+                }); 
+            
+
+            self.Elements.Controllers["ShowGroup"+Marker.id] = MControllerShow;
+            self.Elements.Controllers["HideGroup"+Marker.id] = MControllerHide;
+
+            self.Elements.Controllers.Parent.appendChild(self.Elements.Controllers["ShowGroup"+Marker.id]);
+            self.Elements.Controllers.Parent.appendChild(self.Elements.Controllers["HideGroup"+Marker.id]);
+        }
+
+        return true;
     }
     MapControlZoom(ZoomIn){
         let posX = this.Position.x / this.Zoom.Zoom;
@@ -350,58 +320,63 @@ class InteractiveMap {
         this.Position.y = posY * this.Zoom.Zoom;
 
         return this.Render();
-
-        /*
-
-        DEPRECATED
-
-        if(ZoomIncrease > 0) {
-            this.Zoom = this.Zoom < this.ZoomMaximum ? this.Zoom + this.ZoomIncrease : this.Zoom;
-        } else {
-            this.Zoom = this.Zoom > this.ZoomMinimum ? this.Zoom - this.ZoomIncrease : this.Zoom;
-        }
-
-        this.Position.x = this.Position.x * this.Zoom;
-        this.Position.y = this.Position.y * this.Zoom;
-        
-        return this.Render();
-        */
     }
     MapControlPan(clientX, clientY){
-        let hor = parseFloat((clientX - this.DragStartX).toFixed(2));
-        let ver = parseFloat((clientY - this.DragStartY).toFixed(2));
+        let hor = parseFloat((clientX - this.Pan.XStart).toFixed(2));
+        let ver = parseFloat((clientY - this.Pan.YStart).toFixed(2));
 
-        this.DragStartX = clientX;
-        this.DragStartY = clientY;
+        let directionX = this.Pan.XStart;
+        let directionY = this.Pan.YStart;
+
+        this.Pan.XStart = clientX;
+        this.Pan.YStart = clientY;
 
         let offsetX = this.Elements.Map.offsetLeft ? this.Elements.Map.offsetLeft : 0;
         let offsetY = this.Elements.Map.offsetTop ? this.Elements.Map.offsetTop : 0;
 
-        let parentWidth = this.Elements.Parent.clientWidth;
-        let parentHeight = this.Elements.Parent.clientHeight;
+        let offsetMax = {
+            top: 0,
+            right: (this.Elements.Map.offsetWidth - this.Viewport.Width) * -1,
+            bottom: (this.Elements.Map.offsetHeight - this.Viewport.Height) * -1,
+            left: 0
+        }
+
+        switch(this.Pan.XStart - directionX > 0) {
+            case true:
+                if(offsetX > offsetMax.left) {
+                    offsetX = offsetMax.left;
+                }
+                break;
+            case false:
+                if(offsetX < offsetMax.right){
+                    offsetX = offsetMax.right;
+                }
+                break;
+        }
+        switch(this.Pan.YStart - directionY > 0){
+            case true:
+                if(offsetY > offsetMax.top){
+                    offsetY = offsetMax.top;
+                }
+                break;
+            case false:
+                if(offsetY < offsetMax.bottom){
+                    offsetY = offsetMax.bottom;
+                }
+                break;
+        }
 
         this.Elements.Map.style.left = parseFloat(offsetX + hor) + "px";
         this.Elements.Map.style.top = parseFloat(offsetY + ver) + "px";
-
-        console.log('Height:', this.Elements.Parent.clientHeight * this.Zoom);
-        console.log('Offset:', Math.abs(this.Elements.Map.offsetTop));
-        // console.log(Math.abs(this.Elements.Map.offsetTop / (this.Elements.Parent.clientHeight * this.Zoom)).toFixed(2));
-
-        /*
-        if(Math.abs(offsetX + hor) < parentWidth * 0.65 * this.Zoom) {
-            this.Elements.Map.style.left = parseFloat(offsetX + hor) + "px";
-        }
-        if(Math.abs(offsetY + ver) < parentHeight * 0.65 * this.Zoom) {
-            this.Elements.Map.style.top = parseFloat(offsetY + ver) + "px";
-        }
-        */
     }
-    AddMarkers(markers){
-        var self = this;
+    AddMarkers(markers, context){
+        if(!this.Elements.Map){
+            return this.AddToSynchQueue('AddMarkers', this, Array(markers));
+        }        
 
-        if(!this.Markers) {
-            this.Markers = {};
-        }
+        context = context ? context : this;
+        var self = context;
+
         markers.forEach(function(val){
             if(!self.Markers[val.group.id]){
                 self.Markers[val.group.id] = {
@@ -426,14 +401,103 @@ class InteractiveMap {
             }
         });
 
-        var MField = document.createElement('div');
-            MField.className = 'iamap-markerslayer';
-            MField.style.position = 'absolute';
-            MField.style.left = 0; MField.style.top = 0; MField.style.right = 0; MField.style.bottom = 0;
-        this.Elements.Markers = MField;
-        this.Elements.Map.appendChild(this.Elements.Markers);
-        
+        if(!context.Elements.Markers){
+            var MField = document.createElement('div');
+                MField.className = 'iamap-markerslayer';
+                MField.style.position = 'absolute';
+                MField.style.left = 0; MField.style.top = 0; MField.style.right = 0; MField.style.bottom = 0;
+            context.Elements.Markers = MField;
+            context.Elements.Map.appendChild(context.Elements.Markers);
+        }
+
+        context.Render();
+    }
+    HideMarkers(filter) {
+        let Markers = this.FilterMarkers(filter).items;
+
+        if(Markers){
+            for(let key in Markers){
+                let MarkerId = Markers[key].id;
+                let MarkerGroup = Markers[key].group.id;
+
+                if(this.Markers[MarkerGroup] && this.Markers[MarkerGroup].items[MarkerId]){
+                    this.Markers[MarkerGroup].items[MarkerId].render = false;
+                }
+            }
+        } else {
+            return false;
+        }
+
         this.Render();
+    }
+    ShowMarkers(filter){
+        let Markers = this.FilterMarkers(filter).items;
+
+        if(Markers){
+            for(let key in Markers){
+                let MarkerId = Markers[key].id;
+                let MarkerGroup = Markers[key].group.id;
+
+                if(this.Markers[MarkerGroup] && this.Markers[MarkerGroup].items[MarkerId]){
+                    this.Markers[MarkerGroup].items[MarkerId].render = true;
+                }
+            }
+        } else {
+            return false;
+        }
+
+        this.Render();
+    }
+    FilterMarkers(filter){
+        if(!filter){
+            let filter = {
+                type: 'all'
+            };
+        }
+
+        let Markers;
+        
+        switch(filter.type){
+            case 'group':
+                if(!filter.group){
+                    Markers = null;
+                } else {
+                    Markers = this.Markers[filter.group];
+                }
+                break;
+            case 'marker':
+                if(!filter.group || !filter.id){
+                    Markers = null;
+                } else {
+                    Markers = this.Markers[filter.group]['items'][filter.id];
+                }
+                break;
+            case 'all':
+            default:
+                Markers = this.Markers;
+                break;
+        }
+
+        return Markers == null ? false : Markers;
+    }
+    AddToSynchQueue(name, context, args){
+        let self = this;
+
+        this.SynchQueue.push({
+            f: name,
+            c: context ? self : null,
+            data: Array.isArray(args) ? args : Array(args)
+        });
+    }
+    RunSynchQueue(){
+        let self = this;
+
+        this.SynchQueue.forEach(function(e){
+            if(e.c) {
+                e.data.push(self);
+            }
+            self[e.f].apply(self, e.data);
+        });
     }
 }
 class InteractiveMapMarker {
@@ -445,7 +509,8 @@ class InteractiveMapMarker {
             this.group = cfg.group;
             this.position = cfg.position;
             this.label = cfg.label;
-            this.label = cfg.desc ? cfg.desc : "";
+            this.desc = cfg.desc ? cfg.desc : "";
+            this.render = true;
         }
     }
     cfgError(field){
@@ -456,11 +521,7 @@ class InteractiveMapMarker {
     }
 }
 
-var MapResource = {
-    Width: 980,
-    Height: 795,
-    Source: "http://mapsvg.com/maps/geo-calibrated/denmark.svg"
-}
+var MSource = "http://mapsvg.com/maps/geo-calibrated/denmark.svg";
 var Config = {
     Position: {
         x: 10,
@@ -510,11 +571,28 @@ var MarkersData = Array(
         label: 'Animal 2',
         description: 'Description',
         position: {
-            x: 200,
-            y: 200
+            x: 280,
+            y: 156
         }
     }
 );
-var Map = new InteractiveMap(document.getElementById('map-element'), MapResource, Config);
-var MapPortrait = new InteractiveMap(document.getElementById('map-element-portrait'), MapResource, Config);
-    // Map.AddMarkers(MarkersData);
+var NewMarkersData = Array(
+    {
+        group: {
+            id: 45,
+            slug: 'animal',
+            label: 'Animals',
+            icon: null
+        },
+        id: 62,
+        label: 'Animal 1',
+        description: 'Description',
+        position: {
+            x: 450,
+            y: 450
+        }
+    }
+);
+var Map = new InteractiveMap(document.getElementById('map-element'), MSource, Config);
+    Map.AddMarkers(MarkersData);
+    Map.AddMarkers(NewMarkersData);
