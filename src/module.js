@@ -20,10 +20,45 @@ class InteractiveMap {
             y: config && config.Position ? config.Position.y : 0
         };
         this.Map = {
-            Source: map,
+            Source: map.Map,
             AspectRatio: null,
-            Horizontal: null
+            Horizontal: null,
+            RealWorld: map.UsesRealWorld
         }
+        if(this.Map.RealWorld){
+            this.Map.Longitude = map.Longitude
+            this.Map.Latitude = map.Latitude;
+            this.Map.Area = {
+                Longitude: this.Map.Longitude.End - this.Map.Longitude.Start,
+                Latitude: this.Map.Latitude.Start - this.Map.Latitude.End
+            }
+            this.Map.Distances = {
+                hor: this.GetGeographicDistance(
+                    this.Map.Longitude.Start,
+                    this.Map.Latitude.Start - ((this.Map.Latitude.Start - this.Map.Latitude.End) / 2),
+                    this.Map.Longitude.End,
+                    this.Map.Latitude.Start - ((this.Map.Latitude.Start - this.Map.Latitude.End) / 2)
+                ),
+                ver: this.GetGeographicDistance(
+                    this.Map.Longitude.End  - ((this.Map.Latitude.End - this.Map.Latitude.Start) / 2),
+                    this.Map.Latitude.Start,
+                    this.Map.Longitude.End  - ((this.Map.Latitude.End - this.Map.Latitude.Start) / 2),
+                    this.Map.Latitude.End
+                )
+            }
+            this.Map.Step = 1;
+            this.Map.StepSize = {
+                hor: {
+                    coords: this.Map.Area.Longitude / (this.Map.Distances.hor / this.Map.Step),
+                    px: null
+                },
+                ver: {
+                    coords: this.Map.Area.Latitude / (this.Map.Distances.ver / this.Map.Step),
+                    px: null
+                }
+            }
+        }
+        
         this.Elements = {};
         this.Elements.Parent = parent;
         this.SynchQueue = Array();
@@ -137,6 +172,19 @@ class InteractiveMap {
             }
         }
 
+        // Recalculate coordinates step
+        let MapSize = {
+            w: parseFloat(this.Elements.Map.style.width),
+            h: parseFloat(this.Elements.Map.style.height)
+        }
+
+        if(!this.Map.StepSize.hor.px) {
+            this.Map.StepSize.hor.px = MapSize.w / (this.Map.Distances.hor / this.Map.Step);
+        }
+        if(!this.Map.StepSize.ver.px) {
+            this.Map.StepSize.ver.px = MapSize.h / (this.Map.Distances.ver / this.Map.Step);
+        }
+
         // Render markers
         if(this.Markers){
             for(let g in this.Markers){
@@ -164,8 +212,14 @@ class InteractiveMap {
 
                     this.Markers[g].items[m].Element.style.visibility = Marker.render ? "unset" : "hidden";
 
-                    this.Markers[g].items[m].Element.style.left = (Marker.position.x * this.Zoom.Zoom) + "px";
-                    this.Markers[g].items[m].Element.style.top = (Marker.position.y * this.Zoom.Zoom) + "px";
+                    let CoordDiff = {
+                        x: Math.abs(this.Map.Longitude.Start - Marker.position.x),
+                        y: Math.abs(this.Map.Latitude.Start - Marker.position.y)
+                    }
+
+                    this.Markers[g].items[m].Element.style.left = Math.abs((CoordDiff.x / this.Map.StepSize.hor.coords) * this.Map.StepSize.hor.px) * this.Zoom.Zoom + "px";
+                    this.Markers[g].items[m].Element.style.top = Math.abs((CoordDiff.y / this.Map.StepSize.ver.coords) * this.Map.StepSize.ver.px) * this.Zoom.Zoom + "px";
+
                 }
 
             }
@@ -185,6 +239,17 @@ class InteractiveMap {
             ControllersElement.style.zIndex = 100;
         this.Elements.Controllers.Parent = ControllersElement;
         this.Elements.Parent.appendChild(this.Elements.Controllers.Parent);
+
+        var LocationController = document.createElement('input');
+            LocationController.type = 'button';
+            LocationController.value = 'My location';
+            LocationController.style.position = 'relative';
+            LocationController.addEventListener('click', function(e){
+                e.preventDefault();
+                self.MapShowCurrentLocation();
+            }); 
+        this.Elements.Controllers.Location = LocationController;
+        this.Elements.Controllers.Parent.appendChild(this.Elements.Controllers.Location);
 
         var ZoomInController = document.createElement('input');
             ZoomInController.type = "button";
@@ -273,6 +338,10 @@ class InteractiveMap {
         // Marker controls
         for(let key in self.Markers){
             let Marker = self.Markers[key];
+            if(Marker.controller === false){
+                return;
+            }
+
             var MControllerShow = document.createElement('input');
                 MControllerShow.type = "button";
                 MControllerShow.value = "Show group " + Marker.label;
@@ -302,6 +371,63 @@ class InteractiveMap {
 
             self.Elements.Controllers.Parent.appendChild(self.Elements.Controllers["ShowGroup"+Marker.id]);
             self.Elements.Controllers.Parent.appendChild(self.Elements.Controllers["HideGroup"+Marker.id]);
+        }
+
+        return true;
+    }
+    MapShowCurrentLocation(){
+        var self = this;
+        let Options = {
+            enableHighAccuracy: true,
+            maximumAge: 0
+        }
+        if(navigator && navigator.geolocation) {
+            return navigator.geolocation.getCurrentPosition(function(res){
+                let Coords = res.coords;
+
+                if(!self.Markers.location){
+                    self.AddMarkers(Array({
+                        group: {
+                            id: 'location',
+                            slug: 'location',
+                            label: 'Location',
+                            icon: null,
+                            controller: false
+                        },
+                        id: 'location',
+                        label: 'My location',
+                        listener: false,
+                        position: {
+                            x: Coords.longitude,
+                            y: Coords.latitude
+                        }
+                    }));
+                } else {
+                    self.Markers.location.items.location.position = {
+                        x: Coords.longitude,
+                        y: Coords.latitude
+                    }
+                }
+            }, this.MapLocationError, Options);
+        } else {
+            return this.MapLocationError(null);
+        }
+    }
+    MapLocationError(e){
+        switch(e.code){
+            case e.PERMISSION_DENIED:
+                console.log("User denied the request for Geolocation.");
+                break;
+            case e.POSITION_UNAVAILABLE:
+                console.log("Location information is unavailable.");
+                break;
+            case e.TIMEOUT:
+                console.log("The request to get user location timed out.");
+                break;
+            case e.UNKNOWN_ERROR:
+            default:
+                console.log("An unknown error occurred.");
+                break;
         }
 
         return true;
@@ -499,6 +625,21 @@ class InteractiveMap {
             self[e.f].apply(self, e.data);
         });
     }
+    GetGeographicDistance(lon1,lat1,lon2,lat2){
+        let R = 6391;
+        let dLat = this.Deg2Rad(lat2 - lat1);
+        let dLon = this.Deg2Rad(lon2 - lon1);
+        let a = 
+            Math.sin(dLat/2) * Math.sin(dLat/2) +
+            Math.cos(this.Deg2Rad(lat1)) * Math.cos(this.Deg2Rad(lat2)) * 
+            Math.sin(dLon/2) * Math.sin(dLon/2)
+        ; 
+        let c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
+        return R * c * 1000;
+    }
+    Deg2Rad(deg){
+        return deg * (Math.PI/180);
+    }
 }
 class InteractiveMapMarker {
     constructor(cfg){
@@ -521,7 +662,18 @@ class InteractiveMapMarker {
     }
 }
 
-var MSource = "http://mapsvg.com/maps/geo-calibrated/denmark.svg";
+var DemoMapConfig = {
+    "Map": "http://mapsvg.com/maps/geo-calibrated/denmark.svg",
+    "UsesRealWorld": true,
+    "Longitude": {
+        "Start": 8.07207151,
+        "End": 15.15781381
+    },
+    "Latitude": {
+        "Start": 57.75191059,
+        "End": 54.55877948
+    }
+}
 var Config = {
     Position: {
         x: 10,
@@ -533,66 +685,34 @@ var MarkersData = Array(
     {
         group: {
             id: 0,
-            slug: 'animal',
-            label: 'Animals',
+            slug: 'cities',
+            label: 'Cities',
             icon: null
         },
         id: 1226,
-        label: 'Animal 1',
+        label: 'Copenhagen',
         description: 'Description',
         position: {
-            x: 100,
-            y: 100
+            x: 12.5683372,
+            y: 55.6760968
         }
     },
     {
         group: {
             id: 0,
-            slug: 'animal',
-            label: 'Animals',
+            slug: 'cities',
+            label: 'Cities',
             icon: null
         },
         id: 4551,
-        label: 'Animal 2',
+        label: 'Odense',
         description: 'Description',
         position: {
-            x: 200,
-            y: 200
-        }
-    },
-    {
-        group: {
-            id: 1,
-            slug: 'food-stand',
-            label: 'Food stand',
-            icon: null
-        },
-        id: 4551,
-        label: 'Animal 2',
-        description: 'Description',
-        position: {
-            x: 280,
-            y: 156
+            x: 10.40237,
+            y: 55.403756
         }
     }
 );
-var NewMarkersData = Array(
-    {
-        group: {
-            id: 45,
-            slug: 'animal',
-            label: 'Animals',
-            icon: null
-        },
-        id: 62,
-        label: 'Animal 1',
-        description: 'Description',
-        position: {
-            x: 450,
-            y: 450
-        }
-    }
-);
-var Map = new InteractiveMap(document.getElementById('map-element'), MSource, Config);
+
+var Map = new InteractiveMap(document.getElementById('map-element'), DemoMapConfig, Config);
     Map.AddMarkers(MarkersData);
-    Map.AddMarkers(NewMarkersData);

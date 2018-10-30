@@ -1,0 +1,12 @@
+{
+    "Map": "http://mapsvg.com/maps/geo-calibrated/denmark.svg",
+    "UsesRealWorld": true,
+    "Longitude": {
+        "Start": 0,
+        "End": 0
+    },
+    "Latitude": {
+        "Start": 0,
+        "End": 0
+    }
+}
